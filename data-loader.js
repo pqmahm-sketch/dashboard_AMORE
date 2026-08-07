@@ -68,7 +68,29 @@
     if (text.startsWith('<')) {
       throw new Error(`Sheet "${sheetName}" tidak dapat diakses. Pastikan spreadsheet di-share sebagai "Anyone with the link can view" dan tab "${sheetName}" ada.`);
     }
-    return parseCSV(text);
+    // gviz sometimes wraps the CSV in a JSONP callback if it thinks you asked for JSON.
+    // Detect and unwrap "google.visualization.Query.setResponse({...})"
+    if (/^\s*google\.visualization/.test(text)) {
+      throw new Error(`Sheet "${sheetName}" dikembalikan sebagai JSONP, bukan CSV. Cek URL endpoint gviz.`);
+    }
+    const rows = parseCSV(text);
+    try {
+      console.log(`[AmoreData] sheet "${sheetName}": ${rows.length} rows, first row =`, rows[0]);
+    } catch (_) {}
+    return rows;
+  }
+
+  // Normalize a cell: strip surrounding whitespace, replace non-breaking spaces, lowercase optional.
+  function normCell(s) {
+    if (s == null) return '';
+    return String(s).replace(/ /g, ' ').trim();
+  }
+  function normLower(s) {
+    return normCell(s).toLowerCase();
+  }
+  // Preview the first N rows for debug messages.
+  function previewRows(rows, n) {
+    return rows.slice(0, n).map((r, i) => `[${i}] ${r.slice(0, 4).map(c => JSON.stringify(normCell(c))).join(' | ')}`).join('\n');
   }
 
   function parseCSV(text) {
@@ -117,13 +139,12 @@
      mdMeta (LCR & Sample), and period info.
      ------------------------------------------------------------ */
   function parseDashboard(rows) {
-    // Find header row: first cell === "MD"
+    // Find header row: first cell === "MD" (case-insensitive, whitespace-tolerant)
     let headerIdx = -1;
     for (let i = 0; i < rows.length; i++) {
-      const first = (rows[i][0] || '').trim();
-      if (first === 'MD') { headerIdx = i; break; }
+      if (normLower(rows[i][0]) === 'md') { headerIdx = i; break; }
     }
-    if (headerIdx < 0) throw new Error('Header row "MD" tidak ditemukan di sheet Dashboard.');
+    if (headerIdx < 0) throw new Error('Header row "MD" tidak ditemukan di sheet Dashboard. Preview:\n' + previewRows(rows, 8));
 
     // Find period (row above with month info) and last update
     let period = '';
@@ -263,12 +284,17 @@
        - detailProblemData = per-MD × per-process counts of OK/NG + problem codes
      ------------------------------------------------------------ */
   function parseDataMentah(rows) {
-    // Find header row: first cell === "Timestamp"
+    // Find header row: first cell contains "timestamp" (case-insensitive, whitespace-tolerant).
+    // Falls back to scanning the first few columns since gviz occasionally shifts col 0.
     let headerIdx = -1;
     for (let i = 0; i < rows.length; i++) {
-      if ((rows[i][0] || '').trim() === 'Timestamp') { headerIdx = i; break; }
+      if (normLower(rows[i][0]).startsWith('timestamp')) { headerIdx = i; break; }
+      for (let c = 0; c < Math.min(4, (rows[i] || []).length); c++) {
+        if (normLower(rows[i][c]) === 'timestamp') { headerIdx = i; break; }
+      }
+      if (headerIdx >= 0) break;
     }
-    if (headerIdx < 0) throw new Error('Header "Timestamp" tidak ditemukan di sheet Data Mentah.');
+    if (headerIdx < 0) throw new Error('Header "Timestamp" tidak ditemukan di sheet Data Mentah. Preview:\n' + previewRows(rows, 8));
 
     const headers = rows[headerIdx].map(s => (s || '').trim());
     // Truncate any trailing empty header columns
