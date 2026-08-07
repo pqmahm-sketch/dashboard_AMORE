@@ -284,19 +284,21 @@
        - detailProblemData = per-MD × per-process counts of OK/NG + problem codes
      ------------------------------------------------------------ */
   function parseDataMentah(rows) {
-    // Find header row: first cell contains "timestamp" (case-insensitive, whitespace-tolerant).
-    // Falls back to scanning the first few columns since gviz occasionally shifts col 0.
+    // Find header row. gviz auto-types column A as DateTime because it's full of
+    // timestamps, then drops every non-date value in that column — including the
+    // literal header cell "Timestamp" and the metadata rows above it. So col 0 of
+    // the header row is empty at fetch time. We anchor detection on "Main Dealer"
+    // (col 1) instead, then re-insert "Timestamp" as the col 0 header.
     let headerIdx = -1;
     for (let i = 0; i < rows.length; i++) {
-      if (normLower(rows[i][0]).startsWith('timestamp')) { headerIdx = i; break; }
-      for (let c = 0; c < Math.min(4, (rows[i] || []).length); c++) {
-        if (normLower(rows[i][c]) === 'timestamp') { headerIdx = i; break; }
-      }
-      if (headerIdx >= 0) break;
+      const r = rows[i] || [];
+      if (normLower(r[0]).startsWith('timestamp')) { headerIdx = i; break; }
+      if (normLower(r[1]) === 'main dealer') { headerIdx = i; break; }
     }
-    if (headerIdx < 0) throw new Error('Header "Timestamp" tidak ditemukan di sheet Data Mentah. Preview:\n' + previewRows(rows, 8));
+    if (headerIdx < 0) throw new Error('Header row Data Mentah tidak ditemukan (mencari "Timestamp" atau "Main Dealer"). Preview:\n' + previewRows(rows, 8));
 
-    const headers = rows[headerIdx].map(s => (s || '').trim());
+    const headers = rows[headerIdx].map(s => normCell(s));
+    if (!headers[0]) headers[0] = 'Timestamp';
     // Truncate any trailing empty header columns
     while (headers.length && headers[headers.length - 1] === '') headers.pop();
 
