@@ -369,6 +369,54 @@
   }
 
   /* ------------------------------------------------------------
+     Overlay the running-month MTD from the Dashboard sheet onto the
+     Rekap arrays. Rekap ("Rekap Result All MD") is authoritative for
+     closed months; the Dashboard sheet holds the live MTD figure for
+     the running month. This keeps the trend chart in sync with the
+     current period even before the Rekap sheet's own current-month
+     formulas have updated.
+     ------------------------------------------------------------ */
+  function syncRunningMonth(rekap, dash) {
+    const period = (dash.period || '').trim();
+    const monthMatch = period.match(/^([A-Za-z]{3})/);
+    if (!monthMatch) return;
+    const runIdx = MONTHS_SHORT.findIndex(m => m.toLowerCase() === monthMatch[1].toLowerCase());
+    if (runIdx < 0) return;
+
+    // Build map: entity key → live MTD values [Overall, Flin, Reg, Timer, MSelang, MFB]
+    const currentByEntity = {};
+    if (Array.isArray(dash.nasionalNow) && dash.nasionalNow.length === 6) {
+      currentByEntity['Nasional'] = dash.nasionalNow;
+    }
+    Object.entries(dash.regionAggNow || {}).forEach(([k, v]) => {
+      const key = k.replace(/^REGION\s+/i, 'Region ');
+      if (Array.isArray(v) && v.length === 6) currentByEntity[key] = v;
+    });
+    (dash.md || []).forEach(row => {
+      // row schema: [code, mdName, region, overall, flin, reg, timer, mSel, mFB]
+      if (!row || row.length < 9) return;
+      currentByEntity[`${row[0]} - ${row[1]}`] = row.slice(3, 9);
+    });
+
+    const procKeys = ['Overall', 'Flinkote', 'Regulator', 'Timer', 'MarkingSelang', 'MarkingFB'];
+
+    Object.entries(rekap).forEach(([entityKey, procs]) => {
+      const current = currentByEntity[entityKey];
+      if (!current) return;
+      procKeys.forEach((pk, pi) => {
+        const arr = procs[pk];
+        if (!Array.isArray(arr)) return;
+        // Pad any missing closed months with the prior value (or 0) so indexing works
+        while (arr.length < runIdx) arr.push(arr.length ? arr[arr.length - 1] : 0);
+        // Overwrite / append the running month with the live MTD value
+        arr[runIdx] = Number(current[pi]) || 0;
+        // Trim anything past the running month (defensive)
+        arr.length = runIdx + 1;
+      });
+    });
+  }
+
+  /* ------------------------------------------------------------
      Master loader.
      ------------------------------------------------------------ */
   async function loadAll() {
@@ -388,6 +436,29 @@
       row[2] = dm.codeMdRegion[code] || MD_REGION_FALLBACK[code] || null;
     });
     const md = dash.md.filter(r => r[2]);
+
+    // Sync Rekap's last data point with the live MTD from Dashboard's current period
+    syncRunningMonth(rekapAllMD, dash);
+
+    // Aggregate all MDs' detail-problem data into a "Nasional" entry
+    const nas = { region: 'NASIONAL', processes: {} };
+    PROC_LABELS_DISPLAY.forEach(p => {
+      nas.processes[p] = { sample: 0, ok: 0, ng: 0, problems: {} };
+    });
+    Object.values(dm.detailProblemData).forEach(mdData => {
+      PROC_LABELS_DISPLAY.forEach(p => {
+        const src = mdData.processes && mdData.processes[p];
+        if (!src) return;
+        const dst = nas.processes[p];
+        dst.sample += src.sample || 0;
+        dst.ok += src.ok || 0;
+        dst.ng += src.ng || 0;
+        Object.entries(src.problems || {}).forEach(([prob, qty]) => {
+          dst.problems[prob] = (dst.problems[prob] || 0) + qty;
+        });
+      });
+    });
+    dm.detailProblemData['Nasional'] = nas;
 
     return {
       md,

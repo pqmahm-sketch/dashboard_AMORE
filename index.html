@@ -302,14 +302,11 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       </div>
     </div>
 
-    <footer class="note">
-      Catatan: seluruh angka diverifikasi langsung dari formula &amp; nilai tersimpan pada workbook asli (Dashboard, Detail Problem, Rekap Result All MD, Data Mentah &mdash; snapshot 03 Agu 2026, 2.290 baris laporan). Palet warna divalidasi colorblind-safe (CVD &Delta;E &ge; 8).
-    </footer>
   </section>
 
 </div>
 
-<script src="data-loader.js?v=5"></script>
+<script src="data-loader.js?v=6"></script>
 <script>
 const tooltip = document.getElementById('tooltip');
 function showTip(e, html){ tooltip.innerHTML=html; tooltip.style.opacity=1; moveTip(e); }
@@ -609,16 +606,19 @@ function renderHeat(filterRegion){
 // ===================== DETAIL PROBLEM SECTION =====================
 function buildDetailMdSelect(){
   const sel = document.getElementById('detailMdSelect');
-  let html = '<optgroup label="Pilih Main Dealer">';
+  let html = '';
+  if(detailProblemData['Nasional']){
+    html += '<optgroup label="Agregat"><option value="Nasional">Nasional (semua MD)</option></optgroup>';
+  }
+  html += '<optgroup label="Pilih Main Dealer">';
   md.forEach(r => {
     const key = Object.keys(detailProblemData).find(k => k.startsWith(r[0] + ' '));
     if(key) html += `<option value="${key}">${r[0]} — ${r[1]}</option>`;
   });
   html += '</optgroup>';
   sel.innerHTML = html;
-  // Default to J10 (has most issues)
-  const defaultKey = Object.keys(detailProblemData).find(k => k.startsWith('J10 '));
-  if(defaultKey) sel.value = defaultKey;
+  // Default to Nasional (whole-country view)
+  if(detailProblemData['Nasional']) sel.value = 'Nasional';
   sel.addEventListener('change', ()=>renderDetailProblem(sel.value));
 }
 
@@ -734,11 +734,13 @@ function renderEntity(key){
 
   // Build legend
   const legendEl = document.getElementById('trendLegend');
+  const runningMonth = months[months.length - 1] || '';
   let legendHtml = '';
   series.forEach(s => {
     legendHtml += `<span><span class="ln" style="background:${s.color}"></span>${s.label}</span>`;
   });
-  legendHtml += `<span><span class="ln" style="background:${series[0].color}; opacity:.5; border-top:2px dashed ${series[0].color}; height:0;"></span>Berjalan (provisional)</span>`;
+  legendHtml += `<span><span class="ln" style="background:transparent; border-top:2px dashed #6b6b6b; height:0;"></span>${runningMonth} (berjalan)</span>`;
+  legendHtml += `<span><span class="ln" style="background:transparent; border-top:2px dashed #1baf7a; height:0;"></span>Target 90%</span>`;
   legendEl.innerHTML = legendHtml;
 
   // Draw chart
@@ -757,32 +759,44 @@ function renderEntity(key){
     const y=padT+innerH-(val-vmin)/(vmax-vmin)*innerH;
     s+=`<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" class="gridline"/><text x="4" y="${y+3}" class="axis-label">${val.toFixed(0)}%</text>`;
   }
-  // Target line at 95%
-  if(vmin<95 && vmax>95){
-    const y95=padT+innerH-(95-vmin)/(vmax-vmin)*innerH;
-    s+=`<line x1="${padL}" y1="${y95}" x2="${W-padR}" y2="${y95}" stroke="#1baf7a" stroke-width="1" stroke-dasharray="4,3" opacity="0.5"/>`;
-    s+=`<text x="${W-padR+4}" y="${y95+3}" font-size="9" fill="#1baf7a" font-weight="600">95%</text>`;
+  // Target line at 90%
+  if(vmin<90 && vmax>90){
+    const y90=padT+innerH-(90-vmin)/(vmax-vmin)*innerH;
+    s+=`<line x1="${padL}" y1="${y90}" x2="${W-padR}" y2="${y90}" stroke="#1baf7a" stroke-width="1.2" stroke-dasharray="4,3" opacity="0.7"/>`;
+    s+=`<text x="${W-padR+4}" y="${y90+3}" font-size="9.5" fill="#1baf7a" font-weight="700">Target 90%</text>`;
   }
   months.forEach((m,i)=>{ const [x]=xy(0,i); s+=`<text x="${x}" y="${H-6}" class="axis-label" text-anchor="middle">${m}</text>`; });
 
-  // Draw each series (reverse so primary is on top)
+  // Draw each series (reverse so primary is on top).
+  // "Running month" = last index in each series' data array. Everything before
+  // that is a closed month drawn solid; the segment from the last closed month
+  // to the running month is drawn dashed and the running point is hollow.
   const labelPositions = [];
   [...series].reverse().forEach(sr => {
-    if(!sr.data || sr.data.length<2) return;
-    const closed = sr.data.slice(0,6).map((v,i)=>{ const [x,y]=xy(v,i); return (i===0?'M':'L')+x.toFixed(1)+','+y.toFixed(1); }).join(' ');
-    s += `<path d="${closed}" fill="none" stroke="${sr.color}" stroke-width="${sr.width}" stroke-linecap="round" stroke-linejoin="round"/>`;
-    const [x5,y5]=xy(sr.data[5],5), [x6,y6]=xy(sr.data[6],6);
-    s += `<line x1="${x5}" y1="${y5}" x2="${x6}" y2="${y6}" stroke="${sr.color}" stroke-width="${sr.width}" stroke-dasharray="5,4" stroke-linecap="round"/>`;
+    if(!sr.data || sr.data.length<1) return;
+    const lastIdx = sr.data.length - 1;
+
+    // Solid line covers all closed months (indices 0 .. lastIdx-1)
+    if(lastIdx >= 1){
+      const closed = sr.data.slice(0, lastIdx).map((v,i)=>{ const [x,y]=xy(v,i); return (i===0?'M':'L')+x.toFixed(1)+','+y.toFixed(1); }).join(' ');
+      s += `<path d="${closed}" fill="none" stroke="${sr.color}" stroke-width="${sr.width}" stroke-linecap="round" stroke-linejoin="round"/>`;
+      // Dashed segment from last closed month to running month
+      const [xP,yP]=xy(sr.data[lastIdx-1], lastIdx-1);
+      const [xL,yL]=xy(sr.data[lastIdx],   lastIdx);
+      s += `<line x1="${xP}" y1="${yP}" x2="${xL}" y2="${yL}" stroke="${sr.color}" stroke-width="${sr.width}" stroke-dasharray="5,4" stroke-linecap="round"/>`;
+    }
+
     sr.data.forEach((v,i)=>{
       const [x,y]=xy(v,i);
-      const provisional = i===6;
+      const provisional = (i === lastIdx);
       s += provisional
-        ? `<circle cx="${x}" cy="${y}" r="4.5" fill="#fff" stroke="${sr.color}" stroke-width="2.2" data-v="${v}" data-m="${months[i]}" data-s="${sr.label}" class="hoverdot"/>`
+        ? `<circle cx="${x}" cy="${y}" r="4.5" fill="#fff" stroke="${sr.color}" stroke-width="2.2" data-v="${v}" data-m="${months[i]}" data-s="${sr.label}" data-prov="1" class="hoverdot"/>`
         : `<circle cx="${x}" cy="${y}" r="${sr===series[0]?3.2:2.4}" fill="${sr.color}" data-v="${v}" data-m="${months[i]}" data-s="${sr.label}" class="hoverdot"/>`;
     });
+
     // End label with collision avoidance
-    const lastV = sr.data[6];
-    const [xl,yl]=xy(lastV,6);
+    const lastV = sr.data[lastIdx];
+    const [xl,yl]=xy(lastV, lastIdx);
     let labelY = yl + 4;
     for(const pos of labelPositions){
       if(Math.abs(labelY - pos) < 14){ labelY = pos + 14; }
@@ -793,7 +807,8 @@ function renderEntity(key){
 
   svg.innerHTML=s;
   svg.querySelectorAll('.hoverdot').forEach(dot=>{
-    dot.addEventListener('mousemove', e=>showTip(e, `<b>${dot.dataset.s} — ${dot.dataset.m}</b><br>Overall: ${dot.dataset.v}%${dot.dataset.m==='Jul'?' <i>(provisional)</i>':''}`));
+    const isProv = dot.dataset.prov === '1';
+    dot.addEventListener('mousemove', e=>showTip(e, `<b>${dot.dataset.s} — ${dot.dataset.m}</b><br>Overall: ${dot.dataset.v}%${isProv?' <i>(berjalan)</i>':''}`));
     dot.addEventListener('mouseleave', hideTip);
   });
 
@@ -882,11 +897,11 @@ function renderEverything(){
 
   renderAll(region);
 
-  // Default detail problem view: MD with most NG (fallback to first with problems)
+  // Default detail problem view: Nasional (whole-country) if available
   const detailSel = document.getElementById('detailMdSelect');
-  let defaultDetailKey = Object.keys(detailProblemData).find(k => k.startsWith('J10 '));
+  let defaultDetailKey = detailProblemData['Nasional'] ? 'Nasional' : null;
   if(!defaultDetailKey){
-    // Pick MD with highest total NG
+    // Fallback: MD with highest total NG
     let best = null, bestNG = -1;
     Object.entries(detailProblemData).forEach(([k, v]) => {
       let ng = 0;
