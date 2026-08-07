@@ -22,9 +22,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Prepare site directory
+        run: |
+          mkdir -p _site
+          cp index.html data-loader.js _site/
+          ls -la _site/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
+        with:
+          timeout: 300000
+          error_count: 5
