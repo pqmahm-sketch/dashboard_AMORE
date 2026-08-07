@@ -74,9 +74,12 @@
       throw new Error(`Sheet "${sheetName}" dikembalikan sebagai JSONP, bukan CSV. Cek URL endpoint gviz.`);
     }
     const rows = parseCSV(text);
-    try {
-      console.log(`[AmoreData] sheet "${sheetName}": ${rows.length} rows, first row =`, rows[0]);
-    } catch (_) {}
+    // Enable verbose fetch logging by running `AmoreData.debug = true` in the browser console.
+    if (global.AmoreData && global.AmoreData.debug) {
+      try {
+        console.log(`[AmoreData] sheet "${sheetName}": ${rows.length} rows, first row =`, rows[0]);
+      } catch (_) {}
+    }
     return rows;
   }
 
