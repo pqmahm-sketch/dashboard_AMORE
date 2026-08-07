@@ -53,7 +53,10 @@
 
   function csvUrl(sheetName) {
     const enc = encodeURIComponent(sheetName);
-    return `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:csv&sheet=${enc}&t=${Date.now()}`;
+    // headers=0 stops gviz from auto-treating the first "data-like" row as column labels,
+    // so metadata rows above the real header (Periode Data, Last Update, ...) don't shift
+    // and the real header ("Timestamp", "MD") comes through as an ordinary data cell.
+    return `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:csv&headers=0&sheet=${enc}&t=${Date.now()}`;
   }
 
   async function fetchSheet(sheetName) {
