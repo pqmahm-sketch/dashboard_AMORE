@@ -306,7 +306,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 
 </div>
 
-<script src="data-loader.js?v=6"></script>
+<script src="data-loader.js?v=7"></script>
 <script>
 const tooltip = document.getElementById('tooltip');
 function showTip(e, html){ tooltip.innerHTML=html; tooltip.style.opacity=1; moveTip(e); }
@@ -458,10 +458,13 @@ function computePareto(region){
 function renderKPI(region){
   const agg = getAgg(region);
   const label = getAggLabel(region);
-  // Get previous month data for delta
+  // Previous closed month is the second-to-last index in the synced Rekap arrays.
+  // For period Aug 2026, arrays have Jan..Aug so length-2 = Jul (index 6).
   const prevKey = region==='all' ? 'Nasional' : region.replace('REGION ','Region ');
   const prevData = rekapAllMD[prevKey];
-  const prevOverall = prevData ? prevData.Overall[5] : null; // Jun
+  const prevIdx = prevData && prevData.Overall ? prevData.Overall.length - 2 : -1;
+  const prevOverall = prevIdx >= 0 ? prevData.Overall[prevIdx] : null;
+  const prevMonthName = prevIdx >= 0 ? months[prevIdx] : '';
 
   const procKeys = ['Flinkote','Regulator','Timer','MarkingSelang','MarkingFB'];
   const procDisplay = ['Flinkote','Regulator','Timer','Marking Selang','Marking FB'];
@@ -477,7 +480,7 @@ function renderKPI(region){
   let html = `<div class="card kpi-hero">
     <span class="lbl">Overall Process &mdash; ${label} (MTD)</span>
     <span class="val">${agg[0].toFixed(1)}%</span>`;
-  if(delta!==null) html += `<span class="delta ${deltaUp?'up':'down'}">${deltaUp?'&#9650;':'&#9660;'} ${deltaUp?'+':''}${delta}pp vs Jun</span>`;
+  if(delta!==null) html += `<span class="delta ${deltaUp?'up':'down'}">${deltaUp?'&#9650;':'&#9660;'} ${deltaUp?'+':''}${delta}pp vs ${prevMonthName}</span>`;
   html += `<svg class="spark" id="heroSpark" viewBox="0 0 220 24" preserveAspectRatio="none"></svg></div>`;
 
   for(let i=0; i<5; i++){
@@ -748,16 +751,14 @@ function renderEntity(key){
   const W=900,H=250, padL=38,padR=120,padT=16,padB=28;
   const innerW=W-padL-padR, innerH=H-padT-padB;
 
-  const allVals = series.flatMap(s=>s.data);
-  const vmin = Math.max(0, Math.min(...allVals)-8), vmax = Math.min(100, Math.max(...allVals)+6);
+  // Fixed Y-axis 50%..100% with 10-point gridlines
+  const vmin = 50, vmax = 100;
   function xy(v,i){ const x=padL+i*innerW/(months.length-1); const y=padT+innerH-(v-vmin)/(vmax-vmin)*innerH; return [x,y]; }
 
   let s='';
-  const steps=4;
-  for(let g=0;g<steps+1;g++){
-    const val = vmin+(vmax-vmin)*g/steps;
+  for(let val=vmin; val<=vmax; val+=10){
     const y=padT+innerH-(val-vmin)/(vmax-vmin)*innerH;
-    s+=`<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" class="gridline"/><text x="4" y="${y+3}" class="axis-label">${val.toFixed(0)}%</text>`;
+    s+=`<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" class="gridline"/><text x="4" y="${y+3}" class="axis-label">${val}%</text>`;
   }
   // Target line at 90%
   if(vmin<90 && vmax>90){
@@ -814,6 +815,7 @@ function renderEntity(key){
 
   // Mini row for 5 sub-processes
   const procs = [['Flinkote','Flinkote'],['Regulator','Regulator'],['Timer','Timer'],['Mark. Selang','MarkingSelang'],['Mark. FB','MarkingFB']];
+  const prevMonth = months.length >= 2 ? months[months.length - 2] : '';
   document.getElementById('miniRow').innerHTML = procs.map(([label,key2])=>{
     const arr = d[key2]; if(!arr) return '';
     const last=arr[arr.length-1], prev=arr[arr.length-2];
@@ -824,7 +826,7 @@ function renderEntity(key){
       <div class="lbl">${label}</div>
       <div class="val">${last.toFixed(1)}%</div>
       <svg width="100%" height="22" viewBox="0 0 100 22" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="#898781" stroke-width="1.8"/></svg>
-      <div class="mo" style="color:${up?'var(--success-text)':'var(--critical)'}">${up?'&#9650;':'&#9660;'} ${Math.abs(delta)}pp MoM</div>
+      <div class="mo" style="color:${up?'var(--success-text)':'var(--critical)'}">${up?'&#9650;':'&#9660;'} ${Math.abs(delta)}pp vs ${prevMonth}</div>
     </div>`;
   }).join('');
 }
