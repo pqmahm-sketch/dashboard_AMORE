@@ -244,9 +244,9 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       <p class="panel-sub">Klik baris MD untuk lihat Breakdown Detail Problem di bawah.</p>
       <div class="legend">
         <span><i style="background:#b7b7b7"></i>&lt; 50%</span>
-        <span><i style="background:#f4c7c3"></i>50&ndash;70%</span>
-        <span><i style="background:#fce8b2"></i>71&ndash;90%</span>
-        <span><i style="background:#b7e1cd"></i>&gt; 90%</span>
+        <span><i style="background:#f4c7c3"></i>50&ndash;69%</span>
+        <span><i style="background:#fce8b2"></i>70&ndash;89%</span>
+        <span><i style="background:#b7e1cd"></i>&ge; 90%</span>
       </div>
       <div class="heat-scroll"><table class="heat" id="heatTable"></table></div>
     </section>
@@ -306,7 +306,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 
 </div>
 
-<script src="data-loader.js?v=7"></script>
+<script src="data-loader.js?v=8"></script>
 <script>
 const tooltip = document.getElementById('tooltip');
 function showTip(e, html){ tooltip.innerHTML=html; tooltip.style.opacity=1; moveTip(e); }
@@ -377,14 +377,14 @@ let currentRegion = 'all';
 
 // ===================== HELPERS =====================
 function seqBlue(v){
-  if(v>90) return '#b7e1cd';
-  if(v>=71) return '#fce8b2';
+  if(v>=90) return '#b7e1cd';
+  if(v>=70) return '#fce8b2';
   if(v>=50) return '#f4c7c3';
   return '#b7b7b7';
 }
 function textOn(v){
-  if(v>90) return '#1a7a4c';
-  if(v>=71) return '#8a6d00';
+  if(v>=90) return '#1a7a4c';
+  if(v>=70) return '#8a6d00';
   if(v>=50) return '#a83232';
   return '#555555';
 }
