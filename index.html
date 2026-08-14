@@ -309,7 +309,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 
 </div>
 
-<script src="data-loader.js?v=8"></script>
+<script src="data-loader.js?v=9"></script>
 <script>
 const tooltip = document.getElementById('tooltip');
 function showTip(e, html){ tooltip.innerHTML=html; tooltip.style.opacity=1; moveTip(e); }
@@ -392,14 +392,14 @@ function textOn(v){
   return '#555555';
 }
 function rankColor(v){
-  if(v>90) return '#b7e1cd';
-  if(v>=71) return '#fce8b2';
+  if(v>=90) return '#b7e1cd';
+  if(v>=70) return '#fce8b2';
   if(v>=50) return '#f4c7c3';
   return '#b7b7b7';
 }
 function rankTextColor(v){
-  if(v>90) return '#1a7a4c';
-  if(v>=71) return '#8a6d00';
+  if(v>=90) return '#1a7a4c';
+  if(v>=70) return '#8a6d00';
   if(v>=50) return '#a83232';
   return '#666666';
 }
