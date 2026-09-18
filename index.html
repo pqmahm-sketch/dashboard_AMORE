@@ -112,6 +112,10 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   table.rekap-permd td.num{text-align:center; font-weight:600;}
   table.rekap-permd tr.section td{background:#e6ebf3; font-weight:700; color:var(--text-primary);}
   table.rekap-permd tr.emphasis td{background:#f6faff; font-weight:700;}
+  table.rekap-permd tr.active-proc td.text{background:#eaf3ff; border-left:3px solid #2a78d6;}
+  table.rekap-permd tr.active-proc td{font-weight:700;}
+  table.rekap-permd td.gr-up{color:var(--success-text); font-weight:700;}
+  table.rekap-permd td.gr-down{color:var(--critical); font-weight:700;}
   .proc-tabs-row{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;}
   .proc-tabs-label{font-size:12px; color:var(--text-secondary); font-weight:600;}
 
@@ -325,8 +329,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     </div>
 
     <div class="card" style="margin-top:14px;">
-      <h3 class="panel-title">Rekap Result Per MD</h3>
-      <p class="panel-sub">Rekapitulasi hasil AMORE per Main Dealer sesuai sheet <b>Rekap Result Per MD</b>.</p>
+      <h3 class="panel-title">Rekap Proses AMORE per Bulan &mdash; <span id="rekapEntityLabel">Nasional</span></h3>
       <div class="rekap-scroll"><table class="heat rekap-permd" id="rekapPerMDTable"></table></div>
     </div>
 
@@ -334,7 +337,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 
 </div>
 
-<script src="data-loader.js?v=10"></script>
+<script src="data-loader.js?v=11"></script>
 <script>
 const tooltip = document.getElementById('tooltip');
 function showTip(e, html){ tooltip.innerHTML=html; tooltip.style.opacity=1; moveTip(e); }
@@ -404,8 +407,10 @@ const _rekapAllMDHardcoded_UNUSED = {"B10 - PT Indako Trading Co.": {"Overall": 
 let currentRegion = 'all';
 // Currently selected process for the trend chart pill slicer
 let currentProc = 'Overall';
-// Raw rows of "Rekap Result Per MD" sheet for the summary table
+// Raw rows of "Rekap Result Per MD" sheet (kept for compatibility; not used by table renderer)
 let rekapPerMDRows = [];
+// Period label string from the sheet (e.g. "Aug 2026") — used for month column labels
+let currentPeriod = '';
 // Display metadata for the process slicer
 const PROC_TAB_META = {
   'Overall':       { pill: 'Overall',      title: 'Overall Process' },
@@ -731,7 +736,10 @@ function buildEntitySelect(){
   html += '</optgroup>';
   sel.innerHTML = html;
   sel.value='Nasional';
-  sel.addEventListener('change', ()=>renderEntity(sel.value));
+  sel.addEventListener('change', ()=>{
+    renderEntity(sel.value);
+    renderRekapPerMD();
+  });
 }
 
 function getMDRegionKey(mdKey){
@@ -912,6 +920,7 @@ function applyData(loaded){
   const meta = document.getElementById('zoneMeta');
   const nRows = dataMentah.rows.length;
   const period = loaded.period || '';
+  currentPeriod = period;
   meta.innerHTML = `Periode ${period}<br>${formatLastUpdate(loaded.fetchedAt, loaded.lastUpdate)} · ${nRows.toLocaleString('id-ID')} laporan masuk`;
 }
 
@@ -953,67 +962,81 @@ function renderEverything(){
   renderRekapPerMD();
 }
 
-// ===================== REKAP PER MD TABLE =====================
-// Renders the raw "Rekap Result Per MD" sheet as an HTML table so the
-// summary matches what people already read in the workbook. Rows are
-// classified heuristically to give section headers and totals visual
-// emphasis without hardcoding the sheet's exact structure.
+// ===================== REKAP PROSES AMORE PER BULAN =====================
+// Renders a 6-row × 12-month achievement table for the entity picked in the
+// entity dropdown, with the process pill from the trend chart highlighting
+// the corresponding row so both slicers stay coupled to the same target.
+// Cells are colored by the same 4-band threshold used by the live heatmap.
 function renderRekapPerMD(){
   const table = document.getElementById('rekapPerMDTable');
   if(!table) return;
-  const rows = (rekapPerMDRows || []).filter(r => (r || []).some(c => (c || '').toString().trim() !== ''));
-  if(!rows.length){
-    table.innerHTML = '<tbody><tr><td class="text" style="padding:14px; color:var(--text-secondary)">Sheet <b>Rekap Result Per MD</b> tidak dapat dimuat.</td></tr></tbody>';
+
+  const entitySel = document.getElementById('entitySelect');
+  const entityKey = (entitySel && entitySel.value) || 'Nasional';
+  const labelEl = document.getElementById('rekapEntityLabel');
+  if(labelEl) labelEl.textContent = entityKey;
+
+  const d = rekapAllMD[entityKey];
+  if(!d){
+    table.innerHTML = `<tbody><tr><td class="text" style="padding:14px; color:var(--text-secondary)">Data untuk ${entityKey} tidak tersedia.</td></tr></tbody>`;
     return;
   }
-  // Trim right side: find the largest row width that contains real content
-  let maxCols = 0;
-  rows.forEach(r => { maxCols = Math.max(maxCols, r.length); });
-  // Pick a header row: first row where at least 3 non-empty text cells and no pure-number-only cells.
-  // Fallback to row 0.
-  let headerIdx = 0;
-  for(let i = 0; i < Math.min(rows.length, 8); i++){
-    const r = rows[i];
-    const nonEmpty = r.filter(c => (c || '').toString().trim() !== '').length;
-    if(nonEmpty >= 3){ headerIdx = i; break; }
-  }
-  const header = rows[headerIdx] || [];
-  const dataRows = rows.slice(headerIdx + 1);
 
-  const isNumericCell = s => {
-    if(s == null) return false;
-    const t = String(s).trim().replace('%','').replace(',','.');
-    if(!t) return false;
-    return /^-?\d+(\.\d+)?$/.test(t);
+  // Year suffix from current period ("Aug 2026" → "26")
+  const yearMatch = (currentPeriod || '').match(/\b(20\d{2})\b/);
+  const yearShort = yearMatch ? yearMatch[1].slice(2) : '26';
+  const monthsAll = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+  const procRows = [
+    { key: 'Overall',       label: 'OVERALL PROCESS' },
+    { key: 'Flinkote',      label: 'FLINKOTE' },
+    { key: 'Regulator',     label: 'REGULATOR' },
+    { key: 'Timer',         label: 'TIMER' },
+    { key: 'MarkingSelang', label: 'MARKING SELANG' },
+    { key: 'MarkingFB',     label: 'MARKING FB' },
+  ];
+
+  const cellBg = v => {
+    if(v == null) return 'transparent';
+    if(v >= 90) return '#b7e1cd';
+    if(v >= 70) return '#fce8b2';
+    if(v >= 50) return '#f4c7c3';
+    return '#b7b7b7';
   };
-  const fmtCell = s => {
-    if(s == null) return '';
-    const t = String(s).trim();
-    if(!t) return '';
-    // Percent-like: append % if numeric between 0..100 and header suggests percent
-    return t;
+  const cellFg = v => {
+    if(v == null) return 'var(--text-secondary)';
+    if(v >= 90) return '#1a7a4c';
+    if(v >= 70) return '#8a6d00';
+    if(v >= 50) return '#a83232';
+    return '#555555';
   };
 
-  let html = '<thead><tr>';
-  for(let c = 0; c < maxCols; c++){
-    html += `<th>${(header[c] || '').toString().trim()}</th>`;
-  }
-  html += '</tr></thead><tbody>';
+  let html = '<thead><tr><th style="text-align:left; min-width:180px;">ITEM</th>';
+  monthsAll.forEach(m => { html += `<th>${m}-${yearShort}</th>`; });
+  html += '<th>Gr M vs M-1</th></tr></thead><tbody>';
 
-  dataRows.forEach(r => {
-    const first = (r[0] || '').toString().trim();
-    const upper = first.toUpperCase();
-    // Section labels typical in the workbook (all-caps process names, totals)
-    const isSection = /^(OVERALL|FLINKOTE|REGULATOR|TIMER|MARKING|GRAND|NASIONAL|REGION)/.test(upper);
-    const isEmphasis = /^(TOTAL|GRAND TOTAL|RATA-RATA|AVERAGE)/.test(upper);
-    let cls = '';
-    if(isSection) cls = 'section';
-    else if(isEmphasis) cls = 'emphasis';
-    html += `<tr${cls?` class="${cls}"`:''}>`;
-    for(let c = 0; c < maxCols; c++){
-      const v = r[c];
-      const isNum = isNumericCell(v);
-      html += `<td class="${isNum?'num':'text'}">${fmtCell(v)}</td>`;
+  procRows.forEach(pr => {
+    const arr = d[pr.key] || [];
+    const isActive = pr.key === currentProc;
+    html += `<tr${isActive ? ' class="active-proc"' : ''}><td class="text">${pr.label}</td>`;
+    for(let i = 0; i < 12; i++){
+      const v = i < arr.length ? arr[i] : null;
+      if(v == null){
+        html += `<td class="num" style="color:var(--text-secondary)">-</td>`;
+      } else {
+        html += `<td class="num" style="background:${cellBg(v)}; color:${cellFg(v)}">${v.toFixed(1)}%</td>`;
+      }
+    }
+    // Growth month over month using the last two available values
+    const last = arr.length >= 1 ? arr[arr.length-1] : null;
+    const prev = arr.length >= 2 ? arr[arr.length-2] : null;
+    if(last != null && prev != null){
+      const delta = last - prev;
+      const cls = delta >= 0 ? 'gr-up' : 'gr-down';
+      const arrow = delta >= 0 ? '&#9650;' : '&#9660;';
+      html += `<td class="num ${cls}">${arrow} ${Math.abs(delta).toFixed(1)}pp</td>`;
+    } else {
+      html += `<td class="num" style="color:var(--text-secondary)">-</td>`;
     }
     html += '</tr>';
   });
@@ -1030,6 +1053,7 @@ document.getElementById('procTabs').addEventListener('click', e => {
   currentProc = btn.dataset.proc;
   const entitySel = document.getElementById('entitySelect');
   renderEntity(entitySel.value || 'Nasional');
+  renderRekapPerMD();
 });
 
 async function loadAndRender(isRefresh){
