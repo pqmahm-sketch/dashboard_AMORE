@@ -15,6 +15,7 @@
     dashboard: 'Dashboard',
     dataMentah: 'Data Mentah',
     rekap: 'Rekap Result All MD',
+    rekapPerMD: 'Rekap Result Per MD',
   };
 
   const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -420,10 +421,14 @@
      Master loader.
      ------------------------------------------------------------ */
   async function loadAll() {
-    const [dashRows, rekapRows, dmRows] = await Promise.all([
+    const [dashRows, rekapRows, dmRows, rekapPerMDRows] = await Promise.all([
       fetchSheet(SHEETS.dashboard),
       fetchSheet(SHEETS.rekap),
       fetchSheet(SHEETS.dataMentah),
+      fetchSheet(SHEETS.rekapPerMD).catch(err => {
+        console.warn('[AmoreData] Rekap Result Per MD tidak dapat dimuat:', err.message);
+        return [];
+      }),
     ]);
 
     const dash = parseDashboard(dashRows);
@@ -467,6 +472,7 @@
       nasionalNow: dash.nasionalNow,
       detailProblemData: dm.detailProblemData,
       rekapAllMD,
+      rekapPerMDRows,
       dataMentah: dm.dataMentah,
       period: dash.period,
       lastUpdate: dash.lastUpdate,
